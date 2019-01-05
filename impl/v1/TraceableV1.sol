@@ -28,13 +28,14 @@ contract TraceableV1 is Traceable {
     ChangeEvent[] _changes;
     mapping(uint256 => Gradiant) _contentsMap;
     mapping(uint256 => Gradiant) _holdersMap;
-    mapping(bytes32 => ChangeEvent) _changesMap;
+    mapping(string => ChangeEvent) _changesMap;
 
     string private attribute; //for public data
     string private attributeHash; //for private data
 
     Assessment[] _assessments;
     mapping(address => Assessment) _assessmentsMap;
+    bool _ready = false;
 
     constructor(uint256 tokenId
                 , address genesisAddress
@@ -42,26 +43,37 @@ contract TraceableV1 is Traceable {
                 , string memory traceableType
                 , uint256 quantity
                 , bool partiallyTransferable) public {
-      _creator = TraceableCreator(msg.sender).traceManager();
-      _owner = TraceManager(_creator).ownerOf(tokenId);
-      _genesis = TraceableV1(genesisAddress);
-      _createBlock = block.number;
-      _createTime = now;
-       if ( genesisAddress != address(0) ) {
-         _chainLength = _genesis.chainLength().add(1);
-         _rootCreateTime = _genesis.rootCreateTime();
-         _rootCreateBlock = _genesis.rootCreateBlock();
-       } else {
-         _chainLength = 1;
-         _rootCreateTime = _createTime;
-         _rootCreateBlock = _createBlock;
-       }
-      _tokenId = tokenId;
-      _traceableType = traceableType;
-      _label = label;
-      _quantity = quantity;
-      _partiallyTransferable = partiallyTransferable;
-
+        _creator = TraceableCreator(msg.sender).traceManager();
+        _owner = TraceManager(_creator).ownerOf(tokenId);
+        _genesis = TraceableV1(genesisAddress);
+        _createBlock = block.number;
+        _createTime = now;
+        if ( genesisAddress != address(0) ) {
+             _chainLength = _genesis.chainLength().add(1);
+             _rootCreateTime = _genesis.rootCreateTime();
+             _rootCreateBlock = _genesis.rootCreateBlock();
+              attribute = _genesis.rawMetadata();
+              attributeHash = _genesis.hashMetadata();
+             uint256 cl = _genesis.contentsLength();
+             for(uint i = 0; i < cl; i++ ){
+                (Traceable t ,uint256 q)  = _genesis.contentAt(i);
+                Gradiant memory gradiant = Gradiant({   item: t,
+                                                        quantity: q,
+                                                        exist: true
+                                                        });
+                _contentsMap[t.tokenId()] = gradiant;
+                _contents.push(t.tokenId());
+             }
+        } else {
+             _chainLength = 1;
+             _rootCreateTime = _createTime;
+             _rootCreateBlock = _createBlock;
+        }
+        _tokenId = tokenId;
+        _traceableType = traceableType;
+        _label = label;
+        _quantity = quantity;
+        _partiallyTransferable = partiallyTransferable;
     }
 
     modifier onlyOwner {
@@ -90,17 +102,18 @@ contract TraceableV1 is Traceable {
     function partiallyTransfer(uint256 newTokenId
      , uint256 quantity
     ) public onlyCreator {
+       require(_ready);
        require(_partiallyTransferable && quantity <= _quantity);
        require(TraceManager(_creator).getTraceable(newTokenId).quantity() == quantity);
        _quantity = _quantity.sub(quantity);
-       applyChange('', 'qce', '', '');
     }
 
 
+
     function transfer(uint256 newTokenId) public onlyCreator {
+      require(_ready);
       require( _quantity > 0 && TraceManager(_creator).getTraceable(newTokenId).quantity() == _quantity);
       _quantity =  0;
-      applyChange('', 'oce', '', '');
     }
 
 
@@ -108,10 +121,14 @@ contract TraceableV1 is Traceable {
     function burn(uint256 quantity) public onlyCreator {
        require(_partiallyTransferable || _quantity < quantity);
        _quantity = _quantity.sub(quantity);
-        applyChange('', 'qce', '', '');
     }
 
-    function applyChange(bytes32 _eventId
+    function markAsReady() public onlyAllowed {
+       require(!_ready);
+       _ready = true;
+    }
+
+    function applyChange(string memory _eventId
                         , string memory _eventType
                         , string memory _eventHash
                         , string memory _eventData) public onlyAllowed {
@@ -131,6 +148,7 @@ contract TraceableV1 is Traceable {
 
     function addContent(uint256 _contentTokenId
                         , uint256 _quantity) public onlyCreator {
+        require(!_ready);
         if (  !_contentsMap[_contentTokenId].exist ) {
             Traceable content = TraceManager(_creator).getTraceable(_contentTokenId);
             Gradiant memory gradiant = Gradiant({  item: content,
@@ -144,10 +162,11 @@ contract TraceableV1 is Traceable {
             gradiant.quantity =  gradiant.quantity.add(_quantity);
             _contentsMap[_contentTokenId] = gradiant;
         }
-        applyChange('', 'cce', '', ''); //content change event
+        emit ContentChanged(_contentTokenId, int256(_quantity), now, block.number, msg.sender, _tokenId);
     }
 
     function addHolder(uint256 _holderTokenId, uint256 _usedQuantity) public onlyCreator {
+         require(_ready);
          require( _usedQuantity <= _quantity );
         _quantity = _quantity.sub(_usedQuantity );
         if (  !_holdersMap[_holderTokenId].exist ) {
@@ -163,8 +182,7 @@ contract TraceableV1 is Traceable {
             gradiant.quantity =  gradiant.quantity.add(_usedQuantity);
             _holdersMap[_holderTokenId] = gradiant;
         }
-        applyChange('', 'qce', '', '');
-        applyChange('', 'agge', '', ''); //aggregate change event
+        emit HolderChanged(_holderTokenId, int256(_usedQuantity), now, block.number, msg.sender, _tokenId);
     }
 
 
@@ -202,6 +220,10 @@ contract TraceableV1 is Traceable {
 
     function chainLength() external view returns(uint256){
       return _chainLength;
+    }
+
+    function isReady() public view returns(bool){
+        return _ready;
     }
 
 
@@ -249,14 +271,6 @@ contract TraceableV1 is Traceable {
         return _holders.length;
     }
 
-    function changesOf() external view returns (bytes32[] memory){
-        bytes32[] memory ret = new bytes32[](_changes.length);
-        for(uint i = 0; i < _changes.length; i++ ){
-            ret[i] = _changes[i].eventId;
-        }
-        return ret;
-    }
-
     function changesLength() external view returns (uint){
       return _changes.length;
     }
@@ -277,7 +291,7 @@ contract TraceableV1 is Traceable {
       return _rootCreateBlock;
     }
 
-    function changeWithId(bytes32 eid) external view returns (bytes32 eventId,
+    function changeWithId(string calldata eid) external view returns (string memory eventId,
                                                                         string memory eventType,
                                                                         string memory eventHash,
                                                                         string memory eventData,
@@ -288,7 +302,7 @@ contract TraceableV1 is Traceable {
         return (ret.eventId, ret.eventType, ret.eventHash, ret.eventData, ret.eventTime, ret.eventBlock, ret.changedBy);
     }
 
-    function changesAt(uint index) external view returns (bytes32 eventId,
+    function changesAt(uint index) external view returns (string memory eventId,
                                                             string memory eventType,
                                                             string memory eventHash,
                                                             string memory eventData,
@@ -309,22 +323,22 @@ contract TraceableV1 is Traceable {
     }
 
     function setRawMetaData(string calldata raw)  external onlyAllowed {
+       require(!_ready);
        attribute = raw;
-       applyChange('', 'attce', '', '');
     }
 
     function setHashMetaData(string calldata hash)  external onlyAllowed {
+       require(!_ready);
        attributeHash = hash;
-       applyChange('', 'atthce', '', '');
     }
 
     function addAssessment(Assessment assessment ) external onlyEvaluator {
+      require(_ready);
       require(   address(_assessmentsMap[address(assessment)]) == address(0)
               && msg.sender == assessment.evaluator()
               && _tokenId == assessment.tokenId());
       _assessmentsMap[address(assessment)] = assessment;
       _assessments.push(assessment);
-       applyChange('', 'assesse', '', '');
     }
 
     function assessments() external view returns (Assessment[] memory){
@@ -338,7 +352,7 @@ contract TraceableV1 is Traceable {
 
 
     // Events
-    event Change(bytes32 eventId
+    event Change(string eventId
     , string eventType
     , string eventHash
     , string eventData
@@ -347,38 +361,22 @@ contract TraceableV1 is Traceable {
     , address changedBy
     , uint256 _tokenId);
 
-    event ContentAdded(uint256 _contentTokenId
-    , uint256 quantity
+    event ContentChanged(uint256 _contentTokenId
+    , int256 quantity
     , uint256 eventTime
     , uint256 eventBlock
     , address addedBy
     , uint256 _tokenId);
 
-    event ContentRemoved(uint256 _contentTokenId
-    , uint256 quantity
+    event HolderChanged(uint256 _holderTokenId
+    , int256 quantity
     , uint256 eventTime
     , uint256 eventBlock
     , address addedBy
     , uint256 _tokenId);
-
-    event HolderAdded(uint256 _holderTokenId
-    , uint256 quantity
-    , uint256 eventTime
-    , uint256 eventBlock
-    , address addedBy
-    , uint256 _tokenId);
-
-    event HolderRemoved(uint256 _holderTokenId
-    , uint256 quantity
-    , uint256 eventTime
-    , uint256 eventBlock
-    , address addedBy
-    , uint256 _tokenId);
-
-
 
     struct ChangeEvent {
-        bytes32 eventId;
+        string eventId;
         string eventType;
         string eventHash;
         string eventData;

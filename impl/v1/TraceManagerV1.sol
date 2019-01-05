@@ -32,6 +32,8 @@ contract TraceManagerV1 is TraceManager {
 
     TraceableCreator _traceableCreator;
 
+    address _dataGenerator;
+
 
     constructor () public {
 
@@ -42,6 +44,13 @@ contract TraceManagerV1 is TraceManager {
        _traceableCreator = TraceableCreator(creator);
     }
 
+    function setDataGenerator(address dataGenerator) external {
+        _dataGenerator = dataGenerator;
+    }
+
+    function getDataGenerator() public view returns (address) {
+       return _dataGenerator;
+    }
 
 
     function ownerOf(string memory _label) public view returns (address) {

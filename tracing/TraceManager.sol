@@ -28,6 +28,7 @@ contract TraceManager {
 
     function isApprovedOrOwner(address spender, uint256 tokenId) external view returns (bool);
 
+    function getDataGenerator() public view returns(address);
 
     //events
     event Transfer(address indexed _from, address indexed _to, string indexed _label, uint256 _tokenId, uint256 _newTokenId,  uint256 _quantity);

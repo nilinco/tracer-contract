@@ -6,6 +6,12 @@ contract Traceable {
 
     function createTime() external view returns(uint256);
 
+    function owner() view public returns (address);
+
+    function tokenId() external view returns (uint256);
+
+    function partiallyTransferable() external view returns (bool);
+
     function createBlock() external view returns(uint256);
 
     function rootCreateTime() external view returns(uint256);
@@ -38,18 +44,16 @@ contract Traceable {
 
     function holderAt(uint256 idx) external view returns (Traceable, uint256);
 
-    function changesOf() external view returns (bytes32[] memory);
-
     function changesLength() external view returns (uint);
 
-    function changeWithId(bytes32 eid) external view returns (bytes32 eventId,
+    function changeWithId(string calldata eid) external view returns (string memory eventId,
                                                                       string memory eventType,
                                                                       string memory eventHash,
                                                                       string memory eventData,
                                                                       uint256 eventTime,
                                                                       uint256 eventBlock,
                                                                       address changedBy);
-    function changesAt(uint index) external view returns (bytes32 eventId,
+    function changesAt(uint index) external view returns (string memory eventId,
                                                                         string memory eventType,
                                                                         string memory eventHash,
                                                                         string memory eventData,
@@ -69,7 +73,7 @@ contract Traceable {
 
     function assessments() external view returns (Assessment[] memory);
 
-    function applyChange(bytes32 eventId
+    function applyChange(string memory eventId
                         , string memory eventType
                         , string memory eventHash
                         , string memory eventData) public;
@@ -85,10 +89,14 @@ contract Traceable {
 
     function burn(uint256 quantity) public;
 
+    function markAsReady() public;
+
+    function isReady() public view returns(bool);
+
 
 
     // Events
-    event Change(bytes32 eventId
+    event Change(string eventId
          , string eventType
          , string eventHash
          , string eventData
@@ -97,29 +105,16 @@ contract Traceable {
          , address changedBy
          , uint256 _tokenId);
 
-    event ContentAdded(uint256 _contentTokenId
-    , uint256 quantity
+
+    event ContentChanged(uint256 _contentTokenId
+    , int256 quantity
     , uint256 eventTime
     , uint256 eventBlock
     , address addedBy
     , uint256 _tokenId);
 
-    event ContentRemoved(uint256 _contentTokenId
-    , uint256 quantity
-    , uint256 eventTime
-    , uint256 eventBlock
-    , address addedBy
-    , uint256 _tokenId);
-
-    event HolderAdded(uint256 _holderTokenId
-    , uint256 quantity
-    , uint256 eventTime
-    , uint256 eventBlock
-    , address addedBy
-    , uint256 _tokenId);
-
-    event HolderRemoved(uint256 _holderTokenId
-    , uint256 quantity
+    event HolderChanged(uint256 _holderTokenId
+    , int256 quantity
     , uint256 eventTime
     , uint256 eventBlock
     , address addedBy
